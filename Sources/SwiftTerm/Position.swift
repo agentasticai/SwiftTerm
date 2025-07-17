@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents a column and row
-public struct Position: Equatable, CustomDebugStringConvertible {
+public struct Position: Equatable, CustomDebugStringConvertible, Comparable {
     public var col, row: Int
     
     public init (col: Int, row: Int) {
@@ -47,6 +47,14 @@ public struct Position: Equatable, CustomDebugStringConvertible {
             return nil
         }
         return Position (col: col, row: row-from.yDisp)
+    }
+
+    public static func == (lhs: Position, rhs: Position) -> Bool {
+        lhs.row == rhs.row && lhs.col == rhs.col
+    }
+
+    public static func < (lhs: Position, rhs: Position) -> Bool {
+        lhs.row < rhs.row && lhs.col < rhs.col
     }
 }
 
