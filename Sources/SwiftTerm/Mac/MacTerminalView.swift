@@ -1897,7 +1897,14 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         clipboard.clearContents()
         clipboard.setString(str, forType: .string)
     }
-    
+
+    public func selectedRange() -> (start: Position, end: Position) {
+        (
+            start: min(selection.start, selection.end),
+            end: max(selection.start, selection.end)
+        )
+    }
+
     public override func selectAll(_ sender: Any?)
     {
         selectAll ()
