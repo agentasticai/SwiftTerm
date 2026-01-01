@@ -432,6 +432,9 @@ extension TerminalView {
             guard !isEmpty else {
                 return nil
             }
+            // Enable font cascade fallback for PUA characters (powerline/nerd font symbols)
+            // This allows Core Text to substitute fonts from the cascade list for missing glyphs
+            attributedString.fixAttributes(in: NSRange(location: 0, length: attributedString.length))
             return ViewLineSegment(column: column, columnWidth: columnWidth, characterCount: characterCount, attributedString: attributedString)
         }
     }
