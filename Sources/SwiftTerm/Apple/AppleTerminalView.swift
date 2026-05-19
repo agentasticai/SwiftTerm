@@ -85,7 +85,28 @@ struct ViewLineInfo {
 
 extension TerminalView {
     typealias CellDimension = CGSize
-    
+
+#if os(macOS)
+    /// Controls whether font smoothing (sub-pixel rendering) is enabled during glyph drawing.
+    /// Set to `false` to get thinner strokes on Retina displays, matching iTerm2's "Thin strokes" setting.
+    /// Defaults to `true` (standard macOS font smoothing).
+    @objc open var fontSmoothing: Bool {
+        get { _fontSmoothing }
+        set { _fontSmoothing = newValue }
+    }
+#endif
+
+    /// Multiplier for vertical line spacing. 1.0 = default (ascent + descent + leading).
+    /// Set to 1.1 for 110% vertical spacing (matches iTerm2's vertical spacing setting).
+    /// Triggers a font reset and terminal resize when changed.
+    @objc open var lineSpacing: CGFloat {
+        get { _lineSpacing }
+        set {
+            _lineSpacing = newValue
+            resetFont()
+        }
+    }
+
     func resetCaches ()
     {
         self.attributes = [:]
@@ -205,7 +226,7 @@ extension TerminalView {
         let lineAscent = CTFontGetAscent (fontSet.normal)
         let lineDescent = CTFontGetDescent (fontSet.normal)
         let lineLeading = CTFontGetLeading (fontSet.normal)
-        let cellHeight = ceil(lineAscent + lineDescent + lineLeading)
+        let cellHeight = ceil((lineAscent + lineDescent + lineLeading) * _lineSpacing)
         #if os(macOS)
         // The following is a more robust way of getting the largest ascii character width, but comes with a performance hit.
         // See: https://github.com/migueldeicaza/SwiftTerm/issues/286
@@ -334,8 +355,12 @@ extension TerminalView {
 
     public func synchronizedOutputChanged (source: Terminal, active: Bool)
     {
-        updateScroller()
-        queuePendingDisplay()
+        SyncDebug.log("delegate active=\(active)")
+        if !active {
+            updateScroller()
+            queuePendingDisplay()
+            terminalDelegate?.scrolled(source: self, position: scrollPosition)
+        }
     }
 
     public func setBackgroundColor(source: Terminal, color: Color) {
@@ -1327,13 +1352,28 @@ extension TerminalView {
                             #endif
 
                             if endColumn >= terminal.cols {
-                                rect.size.width = frame.width - rect.origin.x
+                                if backgroundColor == nativeBackgroundColor {
+                                    rect.size.width = frame.width - rect.origin.x
+                                } else {
+                                    let marginX = rect.origin.x + rect.size.width
+                                    if marginX < frame.width {
+                                        let marginRect = CGRect(x: marginX, y: rect.origin.y, width: frame.width - marginX, height: rect.size.height)
+                                        #if os(macOS)
+                                        nativeBackgroundColor.setFill()
+                                        marginRect.fill()
+                                        #else
+                                        context.setFillColor(nativeBackgroundColor.cgColor)
+                                        context.fill(marginRect)
+                                        #endif
+                                    }
+                                }
                             }
 
                             #if os(macOS)
                             backgroundColor.setFill()
                             rect.fill()
                             #else
+                            context.setFillColor(backgroundColor.cgColor)
                             context.fill(rect)
                             #endif
                         }
@@ -1369,8 +1409,8 @@ extension TerminalView {
             context.setShouldAntialias(true)
             context.setAllowsAntialiasing(true)
             #if os(macOS)
-            context.setShouldSmoothFonts(true)
-            context.setAllowsFontSmoothing(true)
+            context.setShouldSmoothFonts(fontSmoothing)
+            context.setAllowsFontSmoothing(fontSmoothing)
             #endif
 
             // Glyph drawing loop — reuses cached CTLines
@@ -1402,15 +1442,11 @@ extension TerminalView {
                             y: lineOrigin.y + yOffset + ctPosition.y)
                     }
 
-                    nativeForegroundColor.set()
+                    nativeForegroundColor.setFill()
 
                     if runAttributes.keys.contains(.foregroundColor) {
                         let color = runAttributes[.foregroundColor] as! TTColor
-                        let cgColor = color.cgColor
-                        if let colorSpace = cgColor.colorSpace {
-                            context.setFillColorSpace(colorSpace)
-                        }
-                        context.setFillColor(cgColor)
+                        color.setFill()
                     }
 
                     CTFontDrawGlyphs(runFont, runGlyphs, &positions, positions.count, context)
@@ -1576,21 +1612,43 @@ extension TerminalView {
     func updateDisplay (notifyAccessibility: Bool)
     {
         defer { pendingDisplay = false }
+        if terminal.synchronizedOutputActive {
+            SyncDebug.log("paint-blocked sync=true")
+            return
+        }
         updateCursorPosition()
         guard let (rowStart, rowEnd) = terminal.getUpdateRange () else {
+            SyncDebug.log("paint-norange (cursor-only)")
             if notifyUpdateChanges {
                 let buffer = terminal.displayBuffer
                 let y = buffer.yDisp+buffer.y
                 terminalDelegate?.rangeChanged (source: self, startY: y, endY: y)
             }
+            // Pure cursor moves (e.g. CSI C / CSI D from word-jumps) don't
+            // mark any row dirty, so getUpdateRange() returns nil. With Metal
+            // the cursor is drawn by the renderer reading buffer.x/y at draw
+            // time, and MTKView is paused — without an explicit redraw the
+            // cursor stays at its old screen position until something else
+            // dirties a row. Trigger a redraw if the cursor moved.
+            #if canImport(MetalKit)
+            if metalView != nil {
+                let buffer = terminal.displayBuffer
+                let cursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
+                if lastRenderedCursor == nil || lastRenderedCursor! != cursor {
+                    lastRenderedCursor = cursor
+                    requestMetalDisplay()
+                }
+            }
+            #endif
             return
         }
         if notifyUpdateChanges {
             terminalDelegate?.rangeChanged (source: self, startY: rowStart, endY: rowEnd)
         }
 
+        SyncDebug.log("paint rows=\(rowStart)-\(rowEnd)")
         terminal.clearUpdateRange ()
-                
+
         #if os(macOS)
         let baseLine = frame.height
         var region = CGRect (x: 0,
@@ -1632,6 +1690,7 @@ extension TerminalView {
                     metalDirtyRange = nil
                 }
             }
+            lastRenderedCursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
             requestMetalDisplay()
         } else {
             setNeedsDisplay(region)
@@ -1645,6 +1704,8 @@ extension TerminalView {
         #if canImport(MetalKit)
         if metalView != nil {
             metalDirtyRange = metalVisibleRange()
+            let buffer = terminal.displayBuffer
+            lastRenderedCursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
             requestMetalDisplay()
         } else {
             setNeedsDisplay(bounds)
@@ -1713,15 +1774,22 @@ extension TerminalView {
     // It is also cheap, so should be called when new data has been posted or received.
     func queuePendingDisplay ()
     {
+        if terminal.synchronizedOutputActive {
+            SyncDebug.log("queue-blocked sync=true")
+            return
+        }
         // throttle
         if !pendingDisplay {
             let fps60 = 16670000
             // let fps30 = 16670000*2
             let fpsDelay = fps60
             pendingDisplay = true
+            SyncDebug.log("queue-scheduled (+16.67ms)")
             DispatchQueue.main.asyncAfter(
                 deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay)),
                 execute: updateDisplay)
+        } else {
+            SyncDebug.log("queue-noop (already pending)")
         }
     }
 
@@ -1919,6 +1987,7 @@ extension TerminalView {
     
     func feedFinish ()
     {
+        SyncDebug.log("feedFinish sync=\(terminal.synchronizedOutputActive)")
         suspendDisplayUpdates ()
         queuePendingDisplay()
     }
