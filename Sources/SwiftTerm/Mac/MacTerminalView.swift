@@ -2101,7 +2101,9 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
     // doCommand/noop: - but more research needs to take place to figure out the priority
     // of those keys.
     //
-    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    // Agentastic fork: open, so a host subclass can resolve its own shortcuts
+    // first and call super for the rest.
+    open override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // AppKit offers key equivalents to every view in the window, so only
         // the focused terminal can take the key for its program.
         guard event.type == .keyDown,
