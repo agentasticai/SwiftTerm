@@ -5,10 +5,12 @@
 //  Created by Miguel de Icaza on 3/13/20.
 //
 
+#if !SWIFTTERM_EMBEDDED
 import Foundation
+#endif
 
 /// Represents a column and row
-public struct Position: Equatable, CustomDebugStringConvertible, Comparable {
+public struct Position: Equatable, CustomDebugStringConvertible, Sendable {
     public var col, row: Int
     
     public init (col: Int, row: Int) {
@@ -16,7 +18,7 @@ public struct Position: Equatable, CustomDebugStringConvertible, Comparable {
         self.row = row
     }
     
-    public enum compareResult {
+    public enum compareResult: Sendable {
         case before
         case after
         case equal
@@ -48,13 +50,4 @@ public struct Position: Equatable, CustomDebugStringConvertible, Comparable {
         }
         return Position (col: col, row: row-from.yDisp)
     }
-
-    public static func == (lhs: Position, rhs: Position) -> Bool {
-        lhs.row == rhs.row && lhs.col == rhs.col
-    }
-
-    public static func < (lhs: Position, rhs: Position) -> Bool {
-        lhs.row < rhs.row && lhs.col < rhs.col
-    }
 }
-
