@@ -1,30 +1,13 @@
 {
+  "originHash" : "a99fba353f2c787fa426f8a46c7be4e067b1d7f94e4e204ab8c54ddb621023f6",
   "pins" : [
     {
-      "identity" : "hdrhistogram-swift",
+      "identity" : "h",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/HdrHistogram/hdrhistogram-swift.git",
+      "location" : "https://github.com/rarestype/h",
       "state" : {
-        "revision" : "de0b9b8a27956b9bfc9b4dce7d1c38ad7c579f19",
-        "version" : "0.1.4"
-      }
-    },
-    {
-      "identity" : "package-benchmark",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ordo-one/package-benchmark",
-      "state" : {
-        "revision" : "a1075611342d4b164bf6e977edb02a3db4434afd",
-        "version" : "1.29.11"
-      }
-    },
-    {
-      "identity" : "package-jemalloc",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ordo-one/package-jemalloc.git",
-      "state" : {
-        "revision" : "e8a5db026963f5bfeac842d9d3f2cc8cde323b49",
-        "version" : "1.0.0"
+        "revision" : "aa3626829160917d4378330617971977cbd78f5b",
+        "version" : "1.0.1"
       }
     },
     {
@@ -109,12 +92,12 @@
       }
     },
     {
-      "identity" : "swift-numerics",
+      "identity" : "swift-png",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-numerics",
+      "location" : "https://github.com/tayloraswift/swift-png",
       "state" : {
-        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
-        "version" : "1.1.1"
+        "revision" : "8a0bcd4df5e4b307c804937776a56dd6ecdf6396",
+        "version" : "4.5.1"
       }
     },
     {
@@ -125,16 +108,7 @@
         "revision" : "61e4ca4b81b9e09e2ec863b00c340eb13497dac6",
         "version" : "1.5.0"
       }
-    },
-    {
-      "identity" : "texttable",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ordo-one/TextTable.git",
-      "state" : {
-        "revision" : "a27a07300cf4ae322e0079ca0a475c5583dd575f",
-        "version" : "0.0.2"
-      }
     }
   ],
-  "version" : 2
+  "version" : 3
 }
