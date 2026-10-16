@@ -265,6 +265,13 @@ final class SnapshotTextBuilder {
         // laid out in the process's default direction, which is right to left
         // when the app runs in an RTL language. The Metal renderer sets the
         // same override on everything it shapes.
+        //
+        // Standard ligatures are off. A font that forms them (fi, fl, ffi in
+        // the system font, which CoreText also substitutes for missing glyphs)
+        // draws one glyph at its own width across several cells and leaves the
+        // rest of them blank, so "flow" reads as "fl ow". Contextual
+        // alternates stay on: coding fonts such as Fira Code build their
+        // ligatures from them, one glyph per cell.
         var result: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: foregroundColor,
@@ -272,6 +279,7 @@ final class SnapshotTextBuilder {
             SwiftTermShapeColorKey: shapeColor,
             ltrWritingDirectionKey: ltrWritingDirectionValue,
             .paragraphStyle: ltrParagraphStyle,
+            .ligature: 0,
         ]
         if background != .defaultColor {
             result[SwiftTermExplicitBackgroundKey] = true

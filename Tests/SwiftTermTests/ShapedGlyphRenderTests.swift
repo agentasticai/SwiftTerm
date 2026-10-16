@@ -2,12 +2,13 @@
 //  ShapedGlyphRenderTests.swift
 //
 //  Regression coverage for shaped runs whose glyph count differs from their
-//  source cell count. Avenir Next shapes `ffi` into fewer glyphs than cells,
-//  so runs must be mapped back to cells through the segment's UTF-16 to cell
-//  map: a run positioned by counting glyphs drops the ligature's background
-//  and underline and draws the next run against the wrong column. Both
-//  renderers are covered — Core Graphics through `cacheDisplay`, Metal
-//  through the headless target.
+//  source cell count. A Devanagari conjunct shapes into fewer glyphs than
+//  cells, so runs must be mapped back to cells through the segment's UTF-16
+//  to cell map: a run positioned by counting glyphs drops the conjunct's
+//  background and underline and draws the next run against the wrong column.
+//  Standard ligatures such as Avenir Next's `ffi` are disabled for terminal
+//  text, so they no longer exercise this path. Both renderers are covered —
+//  Core Graphics through `cacheDisplay`, Metal through the headless target.
 //
 #if os(macOS)
 import AppKit
@@ -69,11 +70,14 @@ private enum RenderTestSupport {
 
 @MainActor
 struct ShapedGlyphRenderTests {
-    /// Red background and blue underline over `ffi`, then a green `X` on the
-    /// default background. Red and blue mark the cells the ligature came
-    /// from; green marks the cell `X` is drawn on.
-    private static let ligatedRow =
-        "\u{1b}[48;2;255;0;0m\u{1b}[58;2;0;0;255m\u{1b}[4mffi\u{1b}[24;49m\u{1b}[38;2;0;255;0mX"
+    /// Red background and blue underline over the two-cell conjunct `क्ष`,
+    /// then a green `X` on the default background. Red and blue mark the
+    /// cells the conjunct came from; green marks the cell `X` is drawn on.
+    private static let shapedRow =
+        "\u{1b}[48;2;255;0;0m\u{1b}[58;2;0;0;255m\u{1b}[4mक्ष\u{1b}[24;49m\u{1b}[38;2;0;255;0mX"
+
+    /// Letters that Avenir Next joins with a standard ligature.
+    private static let standardLigatureRow = "ffi"
 
     /// A wide character with a blue underline; the glyph keeps the default
     /// foreground, so blue in the bitmap can only be decoration ink.
@@ -113,10 +117,8 @@ struct ShapedGlyphRenderTests {
         return rgb.blueComponent > 0.7 && rgb.redComponent < 0.3 && rgb.greenComponent < 0.3
     }
 
-    /// The defect only exists while the font ligates `ffi`. Assert that here
-    /// so a future font that stops ligating fails loudly instead of leaving
-    /// a test that passes on a row with nothing to shape.
-    private func assertLigaturePrecondition(_ view: TerminalView) throws {
+    /// Glyphs CoreText shapes row 0's first segment into, and its UTF-16 length.
+    private func shapedGlyphCount(_ view: TerminalView) throws -> (glyphs: Int, utf16: Int) {
         let info = view.withTerminal { terminal in
             view.buildAttributedStringLocked(row: 0,
                                              line: terminal.buffer.lines[0],
@@ -126,13 +128,30 @@ struct ShapedGlyphRenderTests {
         let line = CTLineCreateWithAttributedString(segment.attributedString)
         let glyphCount = (CTLineGetGlyphRuns(line) as? [CTRun] ?? [])
             .reduce(0) { $0 + CTRunGetGlyphCount($1) }
-        #expect(glyphCount < segment.attributedString.length,
-                "\"\(segment.attributedString.string)\" no longer shapes into fewer glyphs than cells")
+        return (glyphCount, segment.attributedString.length)
+    }
+
+    /// The defect only exists while the row shapes into fewer glyphs than
+    /// cells. Assert that here so a font change that stops it fails loudly
+    /// instead of leaving a test that passes on a row with nothing to shape.
+    private func assertShapingPrecondition(_ view: TerminalView) throws {
+        let shaped = try shapedGlyphCount(view)
+        #expect(shaped.glyphs < shaped.utf16,
+                "row 0 no longer shapes into fewer glyphs than cells")
+    }
+
+    /// A standard ligature would draw one glyph at its own width across
+    /// several cells and leave the rest blank ("fl ow"), so terminal text
+    /// keeps one glyph per letter.
+    @Test func standardLigaturesStayOneGlyphPerCell() throws {
+        let view = makeView(feeding: Self.standardLigatureRow)
+        let shaped = try shapedGlyphCount(view)
+        #expect(shaped.glyphs == shaped.utf16)
     }
 
     @Test func coreGraphicsShapedRunCoversAllSourceCells() throws {
-        let view = makeView(feeding: Self.ligatedRow)
-        try assertLigaturePrecondition(view)
+        let view = makeView(feeding: Self.shapedRow, font: "Menlo-Regular")
+        try assertShapingPrecondition(view)
         let rep = try #require(RenderTestSupport.render(view))
 
         func red(_ column: Int) -> Int {
@@ -144,20 +163,19 @@ struct ShapedGlyphRenderTests {
                                          matches: { self.isGreen($0) })
         }
 
-        // The ligature's background spans every source cell it covers.
+        // The conjunct's background spans every source cell it covers.
         #expect(red(0) > 0)
         #expect(red(1) > 0)
-        #expect(red(2) > 0)
-        #expect(red(3) == 0)
+        #expect(red(2) == 0)
         // So does its underline; the middle half of the cell skips any
         // antialiasing spill from the previous cell's stroke.
-        let lastCell = RenderTestSupport.pixelRange(in: rep, view: view, columns: 2..<3)
+        let lastCell = RenderTestSupport.pixelRange(in: rep, view: view, columns: 1..<2)
         let lastCellMiddle = (lastCell.lowerBound + lastCell.count / 4)..<(lastCell.upperBound - lastCell.count / 4)
         #expect(RenderTestSupport.pixelCount(in: rep, columns: lastCellMiddle,
                                              matches: { self.isBlue($0) }) > 0)
         // And the shaped-down run does not pull the next glyph leftwards.
-        #expect(green(3) > 0)
-        #expect(green(2) == 0)
+        #expect(green(2) > 0)
+        #expect(green(1) == 0)
     }
 
     /// A decoration covers the cell it is drawn for, wide or not: a stroke
@@ -282,8 +300,8 @@ extension ShapedGlyphRenderTests {
     }
 
     @Test func metalShapedRunCoversAllSourceCells() throws {
-        let view = makeView(feeding: Self.ligatedRow)
-        try assertLigaturePrecondition(view)
+        let view = makeView(feeding: Self.shapedRow, font: "Menlo-Regular")
+        try assertShapingPrecondition(view)
         guard let frame = metalFrame(of: view) else { return }
 
         func red(_ column: Int) -> Int {
@@ -295,13 +313,12 @@ extension ShapedGlyphRenderTests {
 
         #expect(red(0) > 0)
         #expect(red(1) > 0)
-        #expect(red(2) > 0)
-        #expect(red(3) == 0)
-        let lastCell = frame.pixelColumns(2..<3)
+        #expect(red(2) == 0)
+        let lastCell = frame.pixelColumns(1..<2)
         let lastCellMiddle = (lastCell.lowerBound + lastCell.count / 4)..<(lastCell.upperBound - lastCell.count / 4)
         #expect(frame.count(inPixels: lastCellMiddle) { r, g, b in b > 180 && r < 80 && g < 80 } > 0)
-        #expect(green(3) > 0)
-        #expect(green(2) == 0)
+        #expect(green(2) > 0)
+        #expect(green(1) == 0)
     }
 
     @Test func metalFallbackGlyphStaysInItsCell() throws {

@@ -3101,10 +3101,12 @@ final class MetalTerminalRenderer {
             // buildAttributedString supplies terminal cells in their final
             // screen order. Keep that order when CoreText shapes glyphs for
             // the Metal atlas; otherwise CoreText applies BiDi a second time.
+            // Standard ligatures are off, as in SnapshotTextBuilder.
             let writingDirectionKey = NSAttributedString.Key(kCTWritingDirectionAttributeName as String)
             let attributedString = NSAttributedString(string: text, attributes: [
                 .font: font,
                 writingDirectionKey: [NSNumber(value: 2)],
+                .ligature: 0,
             ])
             let line = CTLineCreateWithAttributedString(attributedString)
             guard let runs = CTLineGetGlyphRuns(line) as? [CTRun], !runs.isEmpty else {
