@@ -235,9 +235,42 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
         
         public init(font baseFont: NSFont, fontSize: CGFloat? = nil) {
             self.normal = baseFont
-            self.bold = NSFontManager.shared.convert(baseFont, toHaveTrait: [.boldFontMask])
-            self.italic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask])
-            self.boldItalic = NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask, .boldFontMask])
+            self.bold = FontSet.preservingCascade(
+                of: baseFont,
+                NSFontManager.shared.convert(baseFont, toHaveTrait: [.boldFontMask]))
+            self.italic = FontSet.preservingCascade(
+                of: baseFont,
+                NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask]))
+            self.boldItalic = FontSet.preservingCascade(
+                of: baseFont,
+                NSFontManager.shared.convert(baseFont, toHaveTrait: [.italicFontMask, .boldFontMask]))
+        }
+
+        /// Re-applies the cascade list (`kCTFontCascadeListAttribute`) from `source`
+        /// onto `target`, if `source` has one.
+        ///
+        /// `NSFontManager.convert(_:toHaveTrait:)` re-resolves the requested font from
+        /// its family name plus traits, producing a brand-new `NSFont` that drops any
+        /// `kCTFontCascadeListAttribute` set on the original. That breaks per-glyph
+        /// font fallback (e.g. nerd-font / powerline icons via a cascade list) for
+        /// every bold / italic / bold-italic span the terminal renders, even when the
+        /// caller carefully built the base font with a cascade list. This helper
+        /// restores the cascade list on the converted font so the fallback chain works
+        /// for every variant.
+        private static func preservingCascade(of source: NSFont, _ target: NSFont) -> NSFont {
+            let sourceDescriptor = source.fontDescriptor as CTFontDescriptor
+            guard let cascade = CTFontDescriptorCopyAttribute(
+                sourceDescriptor,
+                kCTFontCascadeListAttribute
+            ) else {
+                return target
+            }
+            let targetDescriptor = target.fontDescriptor as CTFontDescriptor
+            let merged = CTFontDescriptorCreateCopyWithAttributes(
+                targetDescriptor,
+                [kCTFontCascadeListAttribute: cascade] as CFDictionary
+            )
+            return CTFontCreateWithFontDescriptor(merged, target.pointSize, nil) as NSFont
         }
 
         // Expected by the shared rendering code
