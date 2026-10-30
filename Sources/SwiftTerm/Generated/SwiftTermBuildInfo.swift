@@ -10,7 +10,7 @@ public enum SwiftTermBuildInfo {
     public static let tag: String? = nil
 
     /// The full Git commit identifier, if one is available.
-    public static let commit: String? = "37cc25eeb8f3a06a86b2f13179d3c570d61cf478"
+    public static let commit: String? = "9655a1c4869e9bf0265654ab8d4915a1bc313f87"
 
     /// Whether the repository had uncommitted changes during the build.
     ///
